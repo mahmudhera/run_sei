@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from model.sei import Sei
 
+from utils import load_state_dict_flexible
+
 
 class SeiBackbone(nn.Module):
     def __init__(self, pretrained_path):
