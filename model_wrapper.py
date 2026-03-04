@@ -60,7 +60,7 @@ class VariantEffectModel(nn.Module):
                 p.requires_grad = False
 
         self.head = nn.Sequential(
-            nn.Linear(feature_dim * 2, hidden_dim),
+            nn.Linear(feature_dim * 3, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -71,7 +71,8 @@ class VariantEffectModel(nn.Module):
         ref_feat = self.backbone(ref)
         alt_feat = self.backbone(alt)
 
-        combined = torch.cat([ref_feat, alt_feat], dim=1)
+        diff = alt_feat - ref_feat
+        combined = torch.cat([ref_feat, alt_feat, diff], dim=1)
         out = self.head(combined)
 
         return out.squeeze(1)
