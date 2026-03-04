@@ -9,8 +9,8 @@ class SeiBackbone(nn.Module):
     def __init__(self, pretrained_path):
         super().__init__()
         self.model = Sei(sequence_length=4096, n_genomic_features=21907)
-        state = load_state_dict_flexible(args.pretrained, map_location="cpu")
-        missing, unexpected = model.load_state_dict(state, strict=False)
+        state = load_state_dict_flexible(pretrained_path, map_location="cpu")
+        missing, unexpected = self.model.load_state_dict(state, strict=False)
 
         if missing:
             print("WARNING: missing keys (showing up to 20):", missing[:20])
