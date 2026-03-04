@@ -8,6 +8,8 @@ from tqdm import tqdm
 from data import one_hot_encode
 from model.sei import Sei
 
+from utils import load_state_dict_flexible
+
 
 class SeqDataset(Dataset):
     def __init__(self, seqs, seq_len=4096):
@@ -61,8 +63,14 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Sei(sequence_length=4096, n_genomic_features=21907)
-    state = torch.load(args.pretrained, map_location="cpu")
-    model.load_state_dict(state)
+    state = load_state_dict_flexible(args.pretrained, map_location="cpu")
+    missing, unexpected = model.load_state_dict(state, strict=False)
+
+    if missing:
+        print("WARNING: missing keys (showing up to 20):", missing[:20])
+    if unexpected:
+        print("WARNING: unexpected keys (showing up to 20):", unexpected[:20])
+    
     model.eval()
 
     if torch.cuda.device_count() > 1:
