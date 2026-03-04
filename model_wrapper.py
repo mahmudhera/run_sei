@@ -7,7 +7,14 @@ class SeiBackbone(nn.Module):
     def __init__(self, pretrained_path):
         super().__init__()
         self.model = Sei(sequence_length=4096, n_genomic_features=21907)
-        self.model.load_state_dict(torch.load(pretrained_path))
+        state = load_state_dict_flexible(args.pretrained, map_location="cpu")
+        missing, unexpected = model.load_state_dict(state, strict=False)
+
+        if missing:
+            print("WARNING: missing keys (showing up to 20):", missing[:20])
+        if unexpected:
+            print("WARNING: unexpected keys (showing up to 20):", unexpected[:20])
+        
         self.model.classifier = nn.Identity()  # remove classifier
 
     def forward(self, x):
