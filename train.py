@@ -15,8 +15,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--data_csv", type=str, required=True)
-    parser.add_argument("--pretrained", type=str, required=True)
+    parser.add_argument("--delimiter", type=str, default="\t")
+    # ref seq, alt seq, ref activity, alt activity column names
+    parser.add_argument("--ref_col", type=str, default="ref_seq")
+    parser.add_argument("--alt_col", type=str, default="alt_seq")
+    parser.add_argument("--ref_act_col", type=str, default="ref_activity")
+    parser.add_argument("--alt_act_col", type=str, default="alt_activity")
 
+    parser.add_argument("--pretrained", type=str, required=True)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--hidden_dim", type=int, default=512)
@@ -85,7 +91,11 @@ def evaluate(model, loader, device):
 def main():
     args = parse_args()
 
-    df = pd.read_csv(args.data_csv)
+    df = pd.read_csv(args.data_csv, sep=args.delimiter)
+
+    # only keep required columns, then rename to expected names for dataset
+    df = df[[args.ref_col, args.alt_col, args.ref_act_col, args.alt_act_col]]
+    df.columns = ["ref_seq", "alt_seq", "ref_activity", "alt_activity"]
 
     train_df, temp_df = train_test_split(df, test_size=0.2, random_state=42)
     val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
