@@ -97,6 +97,36 @@ def evaluate(model, loader, device):
     return total_loss / len(loader.dataset), corr
 
 
+def evaluate_test(model, test_df, device):
+    model.eval()
+    preds = []
+    preds_rc = []
+    targets = []
+    loss_fn = nn.MSELoss()
+
+    loader = DataLoader(VariantDataset(test_df), batch_size=32)
+    test_df_rc = test_df.copy()
+    test_df_rc["ref_seq"] = test_df["ref_seq"].apply(reverse_complement)
+    test_df_rc["alt_seq"] = test_df["alt_seq"].apply(reverse_complement)
+    loader_rc = DataLoader(VariantDataset(test_df_rc), batch_size=32)
+
+    with torch.no_grad():
+        for ref, alt, y in loader:
+            ref, alt, y = ref.to(device), alt.to(device), y.to(device)
+            out = model(ref, alt)
+            preds.extend(out.cpu().numpy())
+            targets.extend(y.cpu().numpy())
+
+        for ref, alt, y in loader_rc:
+            ref, alt, y = ref.to(device), alt.to(device), y.to(device)
+            out = model(ref, alt)
+            preds_rc.extend(out.cpu().numpy())
+
+    final_preds = [(p + p_rc) / 2 for p, p_rc in zip(preds, preds_rc)]
+    corr = correlation(targets, final_preds)
+    return corr
+
+
 def main():
     args = parse_args()
 
@@ -115,20 +145,8 @@ def main():
         aug_train_df1["ref_seq"] = train_df["ref_seq"].apply(reverse_complement)
         aug_train_df1["alt_seq"] = train_df["alt_seq"].apply(reverse_complement)
 
-        # next, flip ref and alt to create more data
-        aug_train_df2 = train_df.copy()
-        aug_train_df2["ref_seq"] = train_df["alt_seq"]
-        aug_train_df2["alt_seq"] = train_df["ref_seq"]
-        aug_train_df2["ref_activity"] = train_df["alt_activity"]
-        aug_train_df2["alt_activity"] = train_df["ref_activity"]
-
-        # next, apply reverse complement to the flipped data
-        aug_train_df3 = aug_train_df2.copy()
-        aug_train_df3["ref_seq"] = aug_train_df2["ref_seq"].apply(reverse_complement)
-        aug_train_df3["alt_seq"] = aug_train_df2["alt_seq"].apply(reverse_complement)
-
         # combine all augmented data
-        train_df = pd.concat([train_df, aug_train_df1, aug_train_df2, aug_train_df3], ignore_index=True)
+        train_df = pd.concat([train_df, aug_train_df1], ignore_index=True)
 
     train_loader = DataLoader(VariantDataset(train_df), batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(VariantDataset(val_df), batch_size=args.batch_size)
@@ -185,9 +203,8 @@ def main():
 
     print("Evaluating on test set...")
     model.load_state_dict(torch.load("best_model.pt"))
-    test_loss, test_corr = evaluate(model, test_loader, device)
+    test_corr = evaluate_test(model, test_df, device)
 
-    print(f"Test Loss: {test_loss:.4f}")
     print(f"Test Corr: {test_corr:.4f}")
 
 
