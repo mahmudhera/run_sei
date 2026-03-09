@@ -362,6 +362,16 @@ def main():
         pruner=pruner,
     )
 
+    study.enqueue_trial({
+        "batch_size": 128,
+        "hidden_dim": 4096,
+        "lr_head": 3e-5,
+        "lr_backbone": 1e-5,
+        "weight_decay": 1e-4,
+        "optimizer": 'adam',
+        "freeze_backbone": args.freeze_backbone,
+    })
+
     def objective(trial):
         params = suggest_hparams(trial, args)
 
