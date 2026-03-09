@@ -11,6 +11,13 @@ from model_wrapper import VariantEffectModel
 from utils import correlation
 
 
+
+def reverse_complement(seq):
+    complement = {"A": "T", "C": "G", "G": "C", "T": "A"}
+    return "".join(complement.get(base, base) for base in reversed(seq))
+
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -32,6 +39,8 @@ def parse_args():
 
     parser.add_argument("--optimizer", type=str, default="adam")
     parser.add_argument("--freeze_backbone", action="store_true")
+
+    parser.add_argument("--augment", action="store_true")
 
     return parser.parse_args()
 
@@ -99,6 +108,27 @@ def main():
 
     train_df, temp_df = train_test_split(df, test_size=0.2, random_state=42)
     val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
+
+    if args.augment:
+        # create augmented data by adding reverse complements
+        aug_train_df1 = train_df.copy()
+        aug_train_df1["ref_seq"] = train_df["ref_seq"].apply(reverse_complement)
+        aug_train_df1["alt_seq"] = train_df["alt_seq"].apply(reverse_complement)
+
+        # next, flip ref and alt to create more data
+        aug_train_df2 = train_df.copy()
+        aug_train_df2["ref_seq"] = train_df["alt_seq"]
+        aug_train_df2["alt_seq"] = train_df["ref_seq"]
+        aug_train_df2["ref_activity"] = train_df["alt_activity"]
+        aug_train_df2["alt_activity"] = train_df["ref_activity"]
+
+        # next, apply reverse complement to the flipped data
+        aug_train_df3 = aug_train_df2.copy()
+        aug_train_df3["ref_seq"] = aug_train_df2["ref_seq"].apply(reverse_complement)
+        aug_train_df3["alt_seq"] = aug_train_df2["alt_seq"].apply(reverse_complement)
+
+        # combine all augmented data
+        train_df = pd.concat([train_df, aug_train_df1, aug_train_df2, aug_train_df3], ignore_index=True)
 
     train_loader = DataLoader(VariantDataset(train_df), batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(VariantDataset(val_df), batch_size=args.batch_size)
