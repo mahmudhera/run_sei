@@ -180,22 +180,22 @@ def train_one_epoch(model, loader, optimizer, device, show_progress=False):
 
 def suggest_hparams(trial, args):
     params = {
-        "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32, 64])
+        "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128, 256, 512])
         if args.search_batch_size
         else args.batch_size,
-        "hidden_dim": trial.suggest_categorical("hidden_dim", [128, 256, 512, 1024])
+        "hidden_dim": trial.suggest_categorical("hidden_dim", [1024, 2048, 4096, 8192])
         if args.search_hidden_dim
         else args.hidden_dim,
-        "lr_head": trial.suggest_float("lr_head", 1e-5, 1e-2, log=True)
+        "lr_head": trial.suggest_float("lr_head", 1e-6, 1e-2, log=True)
         if args.search_lr_head
         else args.lr_head,
         "lr_backbone": trial.suggest_float("lr_backbone", 1e-6, 1e-3, log=True)
         if args.search_lr_backbone
         else args.lr_backbone,
-        "weight_decay": trial.suggest_float("weight_decay", 1e-8, 1e-2, log=True)
+        "weight_decay": trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
         if args.search_weight_decay
         else args.weight_decay,
-        "optimizer": trial.suggest_categorical("optimizer", ["adam", "sgd"])
+        "optimizer": trial.suggest_categorical("optimizer", ["adam", "sgd", "adamw"])
         if args.search_optimizer
         else args.optimizer,
         "freeze_backbone": trial.suggest_categorical("freeze_backbone", [False, True])
