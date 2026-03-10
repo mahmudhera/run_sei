@@ -195,7 +195,7 @@ def suggest_hparams(trial, args):
         "weight_decay": trial.suggest_float("weight_decay", 1e-8, 1e-1, log=True)
         if args.search_weight_decay
         else args.weight_decay,
-        "optimizer": trial.suggest_categorical("optimizer", ["adam", "sgd", "adamw"])
+        "optimizer": trial.suggest_categorical("optimizer", ["adam", "sgd"])
         if args.search_optimizer
         else args.optimizer,
         "freeze_backbone": trial.suggest_categorical("freeze_backbone", [False, True])
