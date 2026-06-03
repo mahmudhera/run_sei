@@ -5,6 +5,90 @@ from model.sei import Sei
 from utils import load_state_dict_flexible
 
 
+class AttentionMLPHead(nn.Module):
+    def __init__(
+        self,
+        feature_dim,
+        hidden_dim,
+        num_heads=4,
+        dropout=0.1,
+    ):
+        super().__init__()
+
+        self.input_proj = nn.Linear(feature_dim, hidden_dim)
+
+        self.type_embedding = nn.Parameter(torch.randn(1, 3, hidden_dim))
+        # token 0 = ref, token 1 = alt, token 2 = diff
+
+        self.attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        self.pool = nn.Sequential(
+            nn.Linear(hidden_dim * 3, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+
+        self.out = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, ref_emb, alt_emb, diff_emb):
+        """
+        ref_emb:  [batch, feature_dim]
+        alt_emb:  [batch, feature_dim]
+        diff_emb: [batch, feature_dim]
+        """
+
+        x = torch.stack([ref_emb, alt_emb, diff_emb], dim=1)
+        # [batch, 3, feature_dim]
+
+        x = self.input_proj(x)
+        # [batch, 3, hidden_dim]
+
+        x = x + self.type_embedding
+        # lets the model know which token is ref/alt/diff
+
+        attn_out, attn_weights = self.attn(
+            query=x,
+            key=x,
+            value=x,
+            need_weights=True,
+        )
+
+        x = self.norm1(x + attn_out)
+
+        ffn_out = self.ffn(x)
+        x = self.norm2(x + ffn_out)
+
+        x = x.reshape(x.size(0), -1)
+        # [batch, hidden_dim * 3]
+
+        x = self.pool(x)
+        out = self.out(x)
+
+        return out
+
+
+
+
 class SeiBackbone(nn.Module):
     def __init__(self, pretrained_path):
         super().__init__()
@@ -59,24 +143,17 @@ class VariantEffectModel(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        self.head = nn.Sequential(
-            nn.Linear(feature_dim * 3, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
+        self.head = AttentionMLPHead(
+            feature_dim, 
+            hidden_dim,
+            num_heads=4,
+            dropout=0.1,
         )
 
     def forward(self, ref, alt):
         ref_feat = self.backbone(ref)
         alt_feat = self.backbone(alt)
-
         diff = alt_feat - ref_feat
-        combined = torch.cat([ref_feat, alt_feat, diff], dim=1)
-        out = self.head(combined)
-
+        
+        out = self.head(ref_feat, alt_feat, diff)
         return out.squeeze(1)
