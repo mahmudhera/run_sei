@@ -5,6 +5,97 @@ from model.sei import Sei
 from utils import load_state_dict_flexible
 
 
+class EntryAttentionMLPHead(nn.Module):
+    def __init__(
+        self,
+        feature_dim,
+        hidden_dim,
+        num_heads=4,
+        dropout=0.1,
+    ):
+        super().__init__()
+
+        self.feature_dim = feature_dim
+        self.seq_len = feature_dim * 3
+
+        # Each scalar entry becomes a hidden_dim-dimensional token
+        self.value_proj = nn.Linear(1, hidden_dim)
+
+        # Positional identity for each entry:
+        # ref[0], ref[1], ..., alt[0], ..., diff[0], ...
+        self.entry_embedding = nn.Parameter(
+            torch.randn(1, self.seq_len, hidden_dim)
+        )
+
+        self.attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        self.mlp = nn.Sequential(
+            nn.Linear(self.seq_len * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, ref_emb, alt_emb, diff_emb):
+        """
+        ref_emb:  [batch, feature_dim]
+        alt_emb:  [batch, feature_dim]
+        diff_emb: [batch, feature_dim]
+        """
+
+        x = torch.cat([ref_emb, alt_emb, diff_emb], dim=-1)
+        # [batch, feature_dim * 3]
+
+        x = x.unsqueeze(-1)
+        # [batch, feature_dim * 3, 1]
+
+        x = self.value_proj(x)
+        # [batch, feature_dim * 3, hidden_dim]
+
+        x = x + self.entry_embedding
+        # [batch, feature_dim * 3, hidden_dim]
+
+        attn_out, attn_weights = self.attn(
+            query=x,
+            key=x,
+            value=x,
+            need_weights=False,
+        )
+
+        x = self.norm1(x + attn_out)
+
+        ffn_out = self.ffn(x)
+        x = self.norm2(x + ffn_out)
+
+        x = x.reshape(x.size(0), -1)
+        # [batch, feature_dim * 3 * hidden_dim]
+
+        out = self.mlp(x)
+        # [batch, 1]
+
+        return out
+
+
 class AttentionMLPHead(nn.Module):
     def __init__(
         self,
@@ -143,7 +234,7 @@ class VariantEffectModel(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        self.head = AttentionMLPHead(
+        self.head = EntryAttentionMLPHead(
             feature_dim, 
             hidden_dim,
             num_heads=4,
