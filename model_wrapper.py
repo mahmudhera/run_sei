@@ -234,8 +234,12 @@ class VariantEffectModel(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
+        self.ref_decoder = nn.Linear(feature_dim, hidden_dim)
+        self.alt_decoder = nn.Linear(feature_dim, hidden_dim)
+        self.diff_decoder = nn.Linear(feature_dim, hidden_dim)
+
         self.head = EntryAttentionMLPHead(
-            feature_dim, 
+            hidden_dim, 
             hidden_dim,
             num_heads=4,
             dropout=0.1,
@@ -246,5 +250,9 @@ class VariantEffectModel(nn.Module):
         alt_feat = self.backbone(alt)
         diff = alt_feat - ref_feat
         
-        out = self.head(ref_feat, alt_feat, diff)
+        ref_decoded = self.ref_decoder(ref_feat)
+        alt_decoded = self.alt_decoder(alt_feat)
+        diff_decoded = self.diff_decoder(diff)
+
+        out = self.head(ref_decoded, alt_decoded, diff_decoded)
         return out.squeeze(1)
