@@ -5,22 +5,6 @@ from model.sei import Sei
 from utils import load_state_dict_flexible
 
 
-
-def register_spline_buffers(module):
-    """
-    Make raw Sei spline tensors move correctly with model.to(device).
-    """
-    for m in module.modules():
-        if hasattr(m, "_spline_tr") and torch.is_tensor(m._spline_tr):
-            spline_tr = m._spline_tr
-
-            # Remove raw tensor attribute first, otherwise register_buffer fails
-            delattr(m, "_spline_tr")
-
-            m.register_buffer("_spline_tr", spline_tr)
-
-
-
 class AttentionMLPHead(nn.Module):
     def __init__(
         self,
@@ -114,7 +98,7 @@ class SeiFullPredictor(nn.Module):
         state = load_state_dict_flexible(pretrained_path, map_location=device)
         missing, unexpected = self.model.load_state_dict(state, strict=False)
 
-        register_spline_buffers(self.model)
+        self.model = self.model.to(device)
 
         if missing:
             print("WARNING: missing keys (showing up to 20):", missing[:20])
@@ -126,59 +110,11 @@ class SeiFullPredictor(nn.Module):
 
 
 
-
-class SeiBackbone(nn.Module):
-    def __init__(self, pretrained_path, device="cuda"):
-        super().__init__()
-        self.model = Sei(sequence_length=4096, n_genomic_features=21907)
-        
-        state = load_state_dict_flexible(pretrained_path, map_location=device)
-        missing, unexpected = self.model.load_state_dict(state, strict=False)
-        
-        register_spline_buffers(self.model)
-
-        if missing:
-            print("WARNING: missing keys (showing up to 20):", missing[:20])
-        if unexpected:
-            print("WARNING: unexpected keys (showing up to 20):", unexpected[:20])
-        
-        self.model.classifier = nn.Identity()  # remove classifier
-
-    def forward(self, x):
-        # Forward until spline layer
-        lout1 = self.model.lconv1(x)
-        out1 = self.model.conv1(lout1)
-
-        lout2 = self.model.lconv2(out1 + lout1)
-        out2 = self.model.conv2(lout2)
-
-        lout3 = self.model.lconv3(out2 + lout2)
-        out3 = self.model.conv3(lout3)
-
-        dconv_out1 = self.model.dconv1(out3 + lout3)
-        cat_out1 = out3 + dconv_out1
-        dconv_out2 = self.model.dconv2(cat_out1)
-        cat_out2 = cat_out1 + dconv_out2
-        dconv_out3 = self.model.dconv3(cat_out2)
-        cat_out3 = cat_out2 + dconv_out3
-        dconv_out4 = self.model.dconv4(cat_out3)
-        cat_out4 = cat_out3 + dconv_out4
-        dconv_out5 = self.model.dconv5(cat_out4)
-        out = cat_out4 + dconv_out5
-
-        spline_out = self.model.spline_tr(out)
-        reshape_out = spline_out.view(spline_out.size(0), -1)
-
-        return reshape_out  # 960 * df
-
-
 class VariantEffectModel(nn.Module):
     def __init__(self, pretrained_path, hidden_dim=512, freeze_backbone=True, device="cuda"):
         super().__init__()
 
         self.backbone = SeiFullPredictor(pretrained_path, device=device)
-        # move the backbone to GPU before extracting feature dimension
-        self.backbone = self.backbone.to(next(self.backbone.parameters()).device)
 
         if freeze_backbone:
             for p in self.backbone.parameters():
@@ -198,6 +134,8 @@ class VariantEffectModel(nn.Module):
                 num_heads=4,
                 dropout=0.1,
             )
+        
+        self.head = self.head.to(device)
 
     def forward(self, ref, alt):
         ref_feat = self.backbone(ref)
