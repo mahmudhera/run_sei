@@ -155,5 +155,5 @@ class VariantEffectModel(nn.Module):
         alt_emb = alt_feat.view(-1, feature_dim)
         diff_emb = diff.view(-1, feature_dim)
 
-        out = self.head(ref_emb, alt_emb, diff_emb)
+        out = self.head(torch.cat([ref_emb, alt_emb, diff_emb], dim=1))
         return out.squeeze(1)
