@@ -115,6 +115,9 @@ class VariantEffectModel(nn.Module):
         super().__init__()
 
         self.backbone = SeiFullPredictor(pretrained_path, device=device)
+        device = torch.device(device)
+        print(f"Moving model to device: {device}")
+        self.backbone = self.backbone.to(device)
 
         if freeze_backbone:
             for p in self.backbone.parameters():
@@ -122,6 +125,7 @@ class VariantEffectModel(nn.Module):
 
         # extract the feature dimension from the backbone
         dummy_input = torch.randn(1, 4, 4096)  # [B, C, L]
+        dummy_input = dummy_input.to(device)
         with torch.no_grad():
             backbone_output = self.backbone(dummy_input)
         feature_dim = backbone_output.size(1)
@@ -135,9 +139,6 @@ class VariantEffectModel(nn.Module):
                 dropout=0.1,
             )
         
-        device = torch.device(device)
-        print(f"Moving model to device: {device}")
-        self.backbone = self.backbone.to(device)
         self.head = self.head.to(device)
 
     def forward(self, ref, alt):
