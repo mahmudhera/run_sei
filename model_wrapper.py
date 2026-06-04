@@ -158,11 +158,15 @@ class VariantEffectModel(nn.Module):
 
         self.backbone = SeiFullPredictor(pretrained_path)
 
-        feature_dim = 960 * self.backbone.model._spline_df
-
         if freeze_backbone:
             for p in self.backbone.parameters():
                 p.requires_grad = False
+
+        # extract the feature dimension from the backbone
+        dummy_input = torch.randn(1, 4, 4096)  # [B, C, L]
+        with torch.no_grad():
+            backbone_output = self.backbone(dummy_input)
+        feature_dim = backbone_output.size(1)
 
         print(f"Backbone feature dimension: {feature_dim}")
         print(f"AttentionMLPHead hidden dimension: {hidden_dim}")
