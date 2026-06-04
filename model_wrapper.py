@@ -135,6 +135,8 @@ class VariantEffectModel(nn.Module):
                 dropout=0.1,
             )
         
+        device = torch.device(device)
+        print(f"Moving model to device: {device}")
         self.backbone = self.backbone.to(device)
         self.head = self.head.to(device)
 
