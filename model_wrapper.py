@@ -5,27 +5,28 @@ from model.sei import Sei
 from utils import load_state_dict_flexible
 
 
-class EntryAttentionMLPHead(nn.Module):
+class ChunkedAttentionHead(nn.Module):
     def __init__(
         self,
         feature_dim,
         hidden_dim,
+        chunk_size=128,
         num_heads=4,
         dropout=0.1,
     ):
         super().__init__()
 
         self.feature_dim = feature_dim
-        self.seq_len = feature_dim * 3
+        self.chunk_size = chunk_size
 
-        # Each scalar entry becomes a hidden_dim-dimensional token
-        self.value_proj = nn.Linear(1, hidden_dim)
+        self.num_chunks = (feature_dim + chunk_size - 1) // chunk_size
+        padded_dim = self.num_chunks * chunk_size
+        self.padded_dim = padded_dim
 
-        # Positional identity for each entry:
-        # ref[0], ref[1], ..., alt[0], ..., diff[0], ...
-        self.entry_embedding = nn.Parameter(
-            torch.randn(1, self.seq_len, hidden_dim)
-        )
+        self.chunk_proj = nn.Linear(chunk_size, hidden_dim)
+
+        self.type_embedding = nn.Parameter(torch.randn(1, 3, 1, hidden_dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, 1, self.num_chunks, hidden_dim))
 
         self.attn = nn.MultiheadAttention(
             embed_dim=hidden_dim,
@@ -44,41 +45,52 @@ class EntryAttentionMLPHead(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
         )
 
-        self.mlp = nn.Sequential(
-            nn.Linear(self.seq_len * hidden_dim, hidden_dim),
+        self.out = nn.Sequential(
+            nn.Linear(3 * self.num_chunks * hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-
             nn.Linear(hidden_dim, 1),
         )
 
+    def _to_chunks(self, x):
+        """
+        x: [B, feature_dim]
+        returns: [B, num_chunks, chunk_size]
+        """
+        if self.padded_dim > self.feature_dim:
+            pad = self.padded_dim - self.feature_dim
+            x = F.pad(x, (0, pad))
+
+        return x.view(x.size(0), self.num_chunks, self.chunk_size)
+
     def forward(self, ref_emb, alt_emb, diff_emb):
         """
-        ref_emb:  [batch, feature_dim]
-        alt_emb:  [batch, feature_dim]
-        diff_emb: [batch, feature_dim]
+        ref_emb:  [B, feature_dim]
+        alt_emb:  [B, feature_dim]
+        diff_emb: [B, feature_dim]
         """
 
-        x = torch.cat([ref_emb, alt_emb, diff_emb], dim=-1)
-        # [batch, feature_dim * 3]
+        ref = self._to_chunks(ref_emb)
+        alt = self._to_chunks(alt_emb)
+        diff = self._to_chunks(diff_emb)
 
-        x = x.unsqueeze(-1)
-        # [batch, feature_dim * 3, 1]
+        x = torch.stack([ref, alt, diff], dim=1)
+        # [B, 3, num_chunks, chunk_size]
 
-        x = self.value_proj(x)
-        # [batch, feature_dim * 3, hidden_dim]
+        x = self.chunk_proj(x)
+        # [B, 3, num_chunks, hidden_dim]
 
-        x = x + self.entry_embedding
-        # [batch, feature_dim * 3, hidden_dim]
+        x = x + self.type_embedding + self.pos_embedding
 
-        attn_out, attn_weights = self.attn(
-            query=x,
-            key=x,
-            value=x,
+        B = x.size(0)
+        x = x.view(B, 3 * self.num_chunks, -1)
+        # [B, 3 * num_chunks, hidden_dim]
+
+        attn_out, _ = self.attn(
+            x, x, x,
             need_weights=False,
         )
 
@@ -87,13 +99,9 @@ class EntryAttentionMLPHead(nn.Module):
         ffn_out = self.ffn(x)
         x = self.norm2(x + ffn_out)
 
-        x = x.reshape(x.size(0), -1)
-        # [batch, feature_dim * 3 * hidden_dim]
+        x = x.reshape(B, -1)
 
-        out = self.mlp(x)
-        # [batch, 1]
-
-        return out
+        return self.out(x)
 
 
 class AttentionMLPHead(nn.Module):
@@ -234,25 +242,22 @@ class VariantEffectModel(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        self.ref_decoder = nn.Linear(feature_dim, hidden_dim)
-        self.alt_decoder = nn.Linear(feature_dim, hidden_dim)
-        self.diff_decoder = nn.Linear(feature_dim, hidden_dim)
-
-        self.head = AttentionMLPHead(
-            hidden_dim, 
-            hidden_dim,
-            num_heads=4,
-            dropout=0.1,
-        )
+        self.head = AttentionMLPHead(feature_dim,
+                hidden_dim,
+                chunk_size=128,
+                num_heads=4,
+                dropout=0.1,
+            )
 
     def forward(self, ref, alt):
         ref_feat = self.backbone(ref)
         alt_feat = self.backbone(alt)
         diff = alt_feat - ref_feat
-        
-        ref_decoded = self.ref_decoder(ref_feat)
-        alt_decoded = self.alt_decoder(alt_feat)
-        diff_decoded = self.diff_decoder(diff)
 
-        out = self.head(ref_decoded, alt_decoded, diff_decoded)
+        feature_dim = ref_feat.size(1)
+        ref_emb = ref_feat.view(-1, feature_dim)
+        alt_emb = alt_feat.view(-1, feature_dim)
+        diff_emb = diff.view(-1, feature_dim)
+
+        out = self.head(ref_emb, alt_emb, diff_emb)
         return out.squeeze(1)
