@@ -87,16 +87,15 @@ class AttentionMLPHead(nn.Module):
         return out
 
 
-
 class SeiFullPredictor(nn.Module):
     """
     Full Sei model that returns the 21,907 chromatin-profile predictions.
     """
-    def __init__(self, pretrained_path):
+    def __init__(self, pretrained_path, device="cuda"):
         super().__init__()
         self.model = Sei(sequence_length=4096, n_genomic_features=21907)
 
-        state = load_state_dict_flexible(pretrained_path, map_location="cpu")
+        state = load_state_dict_flexible(pretrained_path, map_location=device)
         missing, unexpected = self.model.load_state_dict(state, strict=False)
 
         if missing:
@@ -153,10 +152,10 @@ class SeiBackbone(nn.Module):
 
 
 class VariantEffectModel(nn.Module):
-    def __init__(self, pretrained_path, hidden_dim=512, freeze_backbone=True):
+    def __init__(self, pretrained_path, hidden_dim=512, freeze_backbone=True, device="cuda"):
         super().__init__()
 
-        self.backbone = SeiFullPredictor(pretrained_path)
+        self.backbone = SeiFullPredictor(pretrained_path, device=device)
         # move the backbone to GPU before extracting feature dimension
         self.backbone = self.backbone.to(next(self.backbone.parameters()).device)
 

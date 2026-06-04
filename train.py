@@ -158,6 +158,7 @@ def main():
         args.pretrained,
         hidden_dim=args.hidden_dim,
         freeze_backbone=args.freeze_backbone,
+        device=device,
     )
 
     if torch.cuda.device_count() > 1:
