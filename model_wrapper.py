@@ -5,105 +5,6 @@ from model.sei import Sei
 from utils import load_state_dict_flexible
 
 
-class ChunkedAttentionHead(nn.Module):
-    def __init__(
-        self,
-        feature_dim,
-        hidden_dim,
-        chunk_size=128,
-        num_heads=4,
-        dropout=0.1,
-    ):
-        super().__init__()
-
-        self.feature_dim = feature_dim
-        self.chunk_size = chunk_size
-
-        self.num_chunks = (feature_dim + chunk_size - 1) // chunk_size
-        padded_dim = self.num_chunks * chunk_size
-        self.padded_dim = padded_dim
-
-        self.chunk_proj = nn.Linear(chunk_size, hidden_dim)
-
-        self.type_embedding = nn.Parameter(torch.randn(1, 3, 1, hidden_dim))
-        self.pos_embedding = nn.Parameter(torch.randn(1, 1, self.num_chunks, hidden_dim))
-
-        self.attn = nn.MultiheadAttention(
-            embed_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-            batch_first=True,
-        )
-
-        self.norm1 = nn.LayerNorm(hidden_dim)
-        self.norm2 = nn.LayerNorm(hidden_dim)
-
-        self.ffn = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
-        )
-
-        self.out = nn.Sequential(
-            nn.Linear(3 * self.num_chunks * hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
-
-    def _to_chunks(self, x):
-        """
-        x: [B, feature_dim]
-        returns: [B, num_chunks, chunk_size]
-        """
-        if self.padded_dim > self.feature_dim:
-            pad = self.padded_dim - self.feature_dim
-            x = F.pad(x, (0, pad))
-
-        return x.view(x.size(0), self.num_chunks, self.chunk_size)
-
-    def forward(self, ref_emb, alt_emb, diff_emb):
-        """
-        ref_emb:  [B, feature_dim]
-        alt_emb:  [B, feature_dim]
-        diff_emb: [B, feature_dim]
-        """
-
-        ref = self._to_chunks(ref_emb)
-        alt = self._to_chunks(alt_emb)
-        diff = self._to_chunks(diff_emb)
-
-        x = torch.stack([ref, alt, diff], dim=1)
-        # [B, 3, num_chunks, chunk_size]
-
-        x = self.chunk_proj(x)
-        # [B, 3, num_chunks, hidden_dim]
-
-        x = x + self.type_embedding + self.pos_embedding
-
-        B = x.size(0)
-        x = x.view(B, 3 * self.num_chunks, -1)
-        # [B, 3 * num_chunks, hidden_dim]
-
-        attn_out, _ = self.attn(
-            x, x, x,
-            need_weights=False,
-        )
-
-        x = self.norm1(x + attn_out)
-
-        ffn_out = self.ffn(x)
-        x = self.norm2(x + ffn_out)
-
-        x = x.reshape(B, -1)
-
-        return self.out(x)
-
-
 class AttentionMLPHead(nn.Module):
     def __init__(
         self,
@@ -242,7 +143,10 @@ class VariantEffectModel(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        self.head = ChunkedAttentionHead(feature_dim,
+        print(f"Backbone feature dimension: {feature_dim}")
+        print(f"AttentionMLPHead hidden dimension: {hidden_dim}")
+
+        self.head = AttentionMLPHead(feature_dim,
                 hidden_dim,
                 chunk_size=128,
                 num_heads=4,
