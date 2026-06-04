@@ -6,6 +6,116 @@ import numpy as np
 from utils import load_state_dict_flexible
 
 
+class FullEntryAttentionMLPHead(nn.Module):
+    def __init__(
+        self,
+        feature_dim,
+        hidden_dim,
+        num_heads=4,
+        dropout=0.1,
+    ):
+        super().__init__()
+
+        assert hidden_dim % num_heads == 0, (
+            f"hidden_dim={hidden_dim} must be divisible by num_heads={num_heads}"
+        )
+
+        self.feature_dim = feature_dim
+        self.hidden_dim = hidden_dim
+        self.seq_len = feature_dim * 3
+
+        # Each scalar entry becomes a hidden_dim-dimensional token
+        self.value_proj = nn.Linear(1, hidden_dim)
+
+        # Learns which embedding type an entry came from: ref / alt / diff
+        self.type_embedding = nn.Parameter(
+            torch.randn(1, 3, 1, hidden_dim)
+        )
+
+        # Learns the feature index identity: feature 0, feature 1, ...
+        self.pos_embedding = nn.Parameter(
+            torch.randn(1, 1, feature_dim, hidden_dim)
+        )
+
+        self.attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        self.pool = nn.Sequential(
+            nn.Linear(self.seq_len * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+
+        self.out = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, ref_emb, alt_emb, diff_emb):
+        """
+        ref_emb:  [batch, feature_dim]
+        alt_emb:  [batch, feature_dim]
+        diff_emb: [batch, feature_dim]
+        """
+
+        B = ref_emb.size(0)
+
+        x = torch.stack([ref_emb, alt_emb, diff_emb], dim=1)
+        # [batch, 3, feature_dim]
+
+        x = x.unsqueeze(-1)
+        # [batch, 3, feature_dim, 1]
+
+        x = self.value_proj(x)
+        # [batch, 3, feature_dim, hidden_dim]
+
+        x = x + self.type_embedding + self.pos_embedding
+        # [batch, 3, feature_dim, hidden_dim]
+
+        x = x.view(B, self.seq_len, self.hidden_dim)
+        # [batch, 3 * feature_dim, hidden_dim]
+
+        attn_out, attn_weights = self.attn(
+            query=x,
+            key=x,
+            value=x,
+            need_weights=False,
+        )
+        # [batch, 3 * feature_dim, hidden_dim]
+
+        x = self.norm1(x + attn_out)
+
+        ffn_out = self.ffn(x)
+        x = self.norm2(x + ffn_out)
+
+        x = x.reshape(B, -1)
+        # [batch, 3 * feature_dim * hidden_dim]
+
+        x = self.pool(x)
+
+        out = self.out(x)
+        # [batch, 1]
+
+        return out
+
+
+
 class AttentionMLPHead(nn.Module):
     def __init__(
         self,
@@ -151,14 +261,11 @@ class VariantEffectModel(nn.Module):
         self.proj_matrix = self.proj_matrix.to(device)
 
 
-        self.head = nn.Sequential(
-            nn.Linear(dim_after_proj * 3, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
+        self.head = FullEntryAttentionMLPHead(
+            feature_dim=dim_after_proj,
+            hidden_dim=hidden_dim,
+            num_heads=4,
+            dropout=0.1,
         )
         
         self.head = self.head.to(device)
@@ -178,5 +285,5 @@ class VariantEffectModel(nn.Module):
         alt_emb = torch.matmul(alt_emb, self.proj_matrix)
         diff_emb = torch.matmul(diff_emb, self.proj_matrix)
 
-        out = self.head(torch.cat([ref_emb, alt_emb, diff_emb], dim=1))
+        out = self.head(ref_emb, alt_emb, diff_emb)
         return out.squeeze(1)
