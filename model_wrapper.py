@@ -5,6 +5,22 @@ from model.sei import Sei
 from utils import load_state_dict_flexible
 
 
+
+def register_spline_buffers(module):
+    """
+    Make raw Sei spline tensors move correctly with model.to(device).
+    """
+    for m in module.modules():
+        if hasattr(m, "_spline_tr") and torch.is_tensor(m._spline_tr):
+            spline_tr = m._spline_tr
+
+            # Remove raw tensor attribute first, otherwise register_buffer fails
+            delattr(m, "_spline_tr")
+
+            m.register_buffer("_spline_tr", spline_tr)
+
+
+
 class AttentionMLPHead(nn.Module):
     def __init__(
         self,
@@ -98,6 +114,8 @@ class SeiFullPredictor(nn.Module):
         state = load_state_dict_flexible(pretrained_path, map_location=device)
         missing, unexpected = self.model.load_state_dict(state, strict=False)
 
+        register_spline_buffers(self.model)
+
         if missing:
             print("WARNING: missing keys (showing up to 20):", missing[:20])
         if unexpected:
@@ -110,11 +128,14 @@ class SeiFullPredictor(nn.Module):
 
 
 class SeiBackbone(nn.Module):
-    def __init__(self, pretrained_path):
+    def __init__(self, pretrained_path, device="cuda"):
         super().__init__()
         self.model = Sei(sequence_length=4096, n_genomic_features=21907)
-        state = load_state_dict_flexible(pretrained_path, map_location="cpu")
+        
+        state = load_state_dict_flexible(pretrained_path, map_location=device)
         missing, unexpected = self.model.load_state_dict(state, strict=False)
+        
+        register_spline_buffers(self.model)
 
         if missing:
             print("WARNING: missing keys (showing up to 20):", missing[:20])
