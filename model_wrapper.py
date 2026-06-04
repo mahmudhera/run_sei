@@ -88,6 +88,27 @@ class AttentionMLPHead(nn.Module):
 
 
 
+class SeiFullPredictor(nn.Module):
+    """
+    Full Sei model that returns the 21,907 chromatin-profile predictions.
+    """
+    def __init__(self, pretrained_path):
+        super().__init__()
+        self.model = Sei(sequence_length=4096, n_genomic_features=21907)
+
+        state = load_state_dict_flexible(pretrained_path, map_location="cpu")
+        missing, unexpected = self.model.load_state_dict(state, strict=False)
+
+        if missing:
+            print("WARNING: missing keys (showing up to 20):", missing[:20])
+        if unexpected:
+            print("WARNING: unexpected keys (showing up to 20):", unexpected[:20])
+
+    def forward(self, x):
+        return self.model(x)   # [B, 21907]
+
+
+
 
 class SeiBackbone(nn.Module):
     def __init__(self, pretrained_path):
@@ -135,7 +156,7 @@ class VariantEffectModel(nn.Module):
     def __init__(self, pretrained_path, hidden_dim=512, freeze_backbone=True):
         super().__init__()
 
-        self.backbone = SeiBackbone(pretrained_path)
+        self.backbone = SeiFullPredictor(pretrained_path)
 
         feature_dim = 960 * self.backbone.model._spline_df
 
@@ -148,7 +169,6 @@ class VariantEffectModel(nn.Module):
 
         self.head = AttentionMLPHead(feature_dim,
                 hidden_dim,
-                chunk_size=128,
                 num_heads=4,
                 dropout=0.1,
             )
