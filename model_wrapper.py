@@ -251,9 +251,6 @@ class VariantEffectModel(nn.Module):
         proj_matrix = proj_matrix.t()  # [21907, x]
         self.proj_matrix = nn.Parameter(proj_matrix, requires_grad=not freeze_backbone)
 
-        if freeze_backbone:
-            self.proj_matrix.requires_grad = False
-
         dim_after_proj = proj_matrix.size(1)
         print(f"Dimension after projection: {dim_after_proj}")
 
