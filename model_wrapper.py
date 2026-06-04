@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from model.sei import Sei
+import numpy as np
 
 from utils import load_state_dict_flexible
 
@@ -134,16 +135,20 @@ class VariantEffectModel(nn.Module):
         print(f"Head hidden dimension: {hidden_dim}")
 
         # project to sequence classes using model/projvec_targets.npy
-        proj_matrix = torch.from_numpy(
-            torch.load("model/projvec_targets.npy")
-        ).float() 
-        self.proj_matrix = proj_matrix.to(device)
+        proj_matrix = np.load("model/projvec_targets.npy").astype(np.float32)  # [x, 21907]
+        proj_matrix = torch.from_numpy(proj_matrix).to(device)  # [x, 21907]
+        # make [x, 21907] -> [21907, x]
+        proj_matrix = proj_matrix.t()  # [21907, x]
+        self.proj_matrix = nn.Parameter(proj_matrix, requires_grad=not freeze_backbone)
 
         if freeze_backbone:
             self.proj_matrix.requires_grad = False
 
         dim_after_proj = proj_matrix.size(1)
         print(f"Dimension after projection: {dim_after_proj}")
+
+        # send proj matrix to same device as backbone
+        self.proj_matrix = self.proj_matrix.to(device)
 
 
         self.head = nn.Sequential(
