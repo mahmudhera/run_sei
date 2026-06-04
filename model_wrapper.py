@@ -133,8 +133,21 @@ class VariantEffectModel(nn.Module):
         print(f"Backbone feature dimension: {feature_dim}")
         print(f"Head hidden dimension: {hidden_dim}")
 
+        # project to sequence classes using model/projvec_targets.npy
+        proj_matrix = torch.from_numpy(
+            torch.load("model/projvec_targets.pt")
+        ).float() 
+        self.proj_matrix = proj_matrix.to(device)
+
+        if freeze_backbone:
+            self.proj_matrix.requires_grad = False
+
+        dim_after_proj = proj_matrix.size(1)
+        print(f"Dimension after projection: {dim_after_proj}")
+
+
         self.head = nn.Sequential(
-            nn.Linear(feature_dim * 3, hidden_dim),
+            nn.Linear(dim_after_proj * 3, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -154,6 +167,11 @@ class VariantEffectModel(nn.Module):
         ref_emb = ref_feat.view(-1, feature_dim)
         alt_emb = alt_feat.view(-1, feature_dim)
         diff_emb = diff.view(-1, feature_dim)
+
+        # Apply projection matrix
+        ref_emb = torch.matmul(ref_emb, self.proj_matrix)
+        alt_emb = torch.matmul(alt_emb, self.proj_matrix)
+        diff_emb = torch.matmul(diff_emb, self.proj_matrix)
 
         out = self.head(torch.cat([ref_emb, alt_emb, diff_emb], dim=1))
         return out.squeeze(1)
