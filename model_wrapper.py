@@ -238,7 +238,7 @@ class VariantEffectModel(nn.Module):
         self.alt_decoder = nn.Linear(feature_dim, hidden_dim)
         self.diff_decoder = nn.Linear(feature_dim, hidden_dim)
 
-        self.head = EntryAttentionMLPHead(
+        self.head = AttentionMLPHead(
             hidden_dim, 
             hidden_dim,
             num_heads=4,
