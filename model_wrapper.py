@@ -131,13 +131,17 @@ class VariantEffectModel(nn.Module):
         feature_dim = backbone_output.size(1)
 
         print(f"Backbone feature dimension: {feature_dim}")
-        print(f"AttentionMLPHead hidden dimension: {hidden_dim}")
+        print(f"Head hidden dimension: {hidden_dim}")
 
-        self.head = AttentionMLPHead(feature_dim,
-                hidden_dim,
-                num_heads=4,
-                dropout=0.1,
-            )
+        self.head = nn.Sequential(
+            nn.Linear(feature_dim * 3, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
         
         self.head = self.head.to(device)
 
