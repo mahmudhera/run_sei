@@ -105,7 +105,6 @@ class SeiFullPredictor(nn.Module):
             print("WARNING: unexpected keys (showing up to 20):", unexpected[:20])
 
     def forward(self, x):
-        self.model.spline_tr._spline_tr = self.model.spline_tr._spline_tr.to(x.device)
         return self.model(x)   # [B, 21907]
 
 
@@ -158,6 +157,8 @@ class VariantEffectModel(nn.Module):
         super().__init__()
 
         self.backbone = SeiFullPredictor(pretrained_path)
+        # move the backbone to GPU before extracting feature dimension
+        self.backbone = self.backbone.to(next(self.backbone.parameters()).device)
 
         if freeze_backbone:
             for p in self.backbone.parameters():
