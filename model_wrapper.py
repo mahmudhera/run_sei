@@ -105,6 +105,7 @@ class SeiFullPredictor(nn.Module):
             print("WARNING: unexpected keys (showing up to 20):", unexpected[:20])
 
     def forward(self, x):
+        self.model.spline_tr._spline_tr = self.model.spline_tr._spline_tr.to(x.device)
         return self.model(x)   # [B, 21907]
 
 
