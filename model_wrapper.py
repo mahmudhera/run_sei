@@ -242,7 +242,7 @@ class VariantEffectModel(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        self.head = AttentionMLPHead(feature_dim,
+        self.head = ChunkedAttentionHead(feature_dim,
                 hidden_dim,
                 chunk_size=128,
                 num_heads=4,
