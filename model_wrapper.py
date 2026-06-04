@@ -135,6 +135,7 @@ class VariantEffectModel(nn.Module):
                 dropout=0.1,
             )
         
+        self.backbone = self.backbone.to(device)
         self.head = self.head.to(device)
 
     def forward(self, ref, alt):
