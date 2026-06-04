@@ -135,7 +135,7 @@ class VariantEffectModel(nn.Module):
 
         # project to sequence classes using model/projvec_targets.npy
         proj_matrix = torch.from_numpy(
-            torch.load("model/projvec_targets.pt")
+            torch.load("model/projvec_targets.npy")
         ).float() 
         self.proj_matrix = proj_matrix.to(device)
 
