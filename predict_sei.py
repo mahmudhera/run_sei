@@ -92,8 +92,8 @@ def main():
     np.save(args.out_npy, preds)
 
     # load the model/projvec_targets.npy which is (21907, 61) matrix -- we'll collapse 21K outputs to 61
-    projvec_targets = np.load("model/projvec_targets.npy")  # (21907, 61)
-    seq_class_preds = preds @ projvec_targets  # (N, 61)
+    projvec_targets = np.load("model/projvec_targets.npy")  # (61, 21907)
+    seq_class_preds = preds @ projvec_targets.T  # (N, 61)
     np.save(args.out_seq_classes, seq_class_preds)
 
     if not args.no_csv:
