@@ -37,6 +37,8 @@ def parse_args():
     p.add_argument("--num_workers", type=int, default=2)
     p.add_argument("--out_npy", type=str, default="sei_preds.npy",
                    help="Output .npy file (N, 21907)")
+    p.add_argument("--out_seq_classes", type=str, default="sei_preds_seq_classes.npy",
+                   help="Output .npy file (N, x) where x is # of seq classes (40 to 61)")    
     p.add_argument("--out_csv", type=str, default="sei_preds_summary.csv",
                    help="Optional CSV with row index + mean/max of outputs")
     p.add_argument("--no_csv", action="store_true",
@@ -88,6 +90,11 @@ def main():
 
     preds = np.concatenate(preds, axis=0)  # (N, 21907)
     np.save(args.out_npy, preds)
+
+    # load the model/projvec_targets.npy which is (21907, 61) matrix -- we'll collapse 21K outputs to 61
+    projvec_targets = np.load("model/projvec_targets.npy")  # (21907, 61)
+    seq_class_preds = preds @ projvec_targets  # (N, 61)
+    np.save(args.out_seq_classes, seq_class_preds)
 
     if not args.no_csv:
         # lightweight summary; avoids writing huge CSV of 21k columns
