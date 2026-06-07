@@ -27,9 +27,10 @@ class SeqDataset(Dataset):
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--input_csv", type=str, required=True,
-                   help="CSV with a column named 'sequence'")
+                   help="CSV/TSV (TSV default) with a column named 'sequence'")
     p.add_argument("--seq_col", type=str, default="sequence",
                    help="Column name containing sequences")
+    p.add_argument("--delimiter", type=str, default="\t")
     p.add_argument("--pretrained", type=str, required=True,
                    help="Path to sei.pth")
     p.add_argument("--batch_size", type=int, default=64)
@@ -46,7 +47,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    df = pd.read_csv(args.input_csv)
+    df = pd.read_csv(args.input_csv, delimiter=args.delimiter)
     if args.seq_col not in df.columns:
         raise ValueError(f"Missing column '{args.seq_col}' in {args.input_csv}")
 
