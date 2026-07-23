@@ -88,6 +88,8 @@ def main():
             y = model(x)                         # (B, 21907)
             preds.append(y.detach().cpu().numpy().astype(np.float32))
 
+    print("Predictions complete. Concatenating and saving...")
+
     preds = np.concatenate(preds, axis=0)  # (N, 21907)
     np.save(args.out_npy, preds)
 
