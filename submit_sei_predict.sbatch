@@ -1,6 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=gpu-redhat
-#SBATCH --gres=gpu:1
+#SBATCH --partition=main-redhat
 #SBATCH --mem=48G
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
