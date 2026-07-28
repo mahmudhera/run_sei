@@ -75,6 +75,9 @@ echo "Running on host:    $(hostname)"
 echo "Start time:         $(date)"
 echo
 
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate malinois_inference
+
 python predict_sei.py \
     --input_csv "${INPUT_CSV}" \
     --delimiter "," \
