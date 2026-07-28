@@ -17,7 +17,7 @@ fi
 DATASET="$1"
 SEQ_TYPE="$2"
 
-PROJECT_DIR="/home/mr2320/malinois_inference_minimal"
+PROJECT_DIR="/scratch/mr2320/run_sei"
 DATA_DIR="${PROJECT_DIR}/data"
 MODEL="${PROJECT_DIR}/model/sei.pth"
 
